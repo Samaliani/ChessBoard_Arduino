@@ -103,7 +103,7 @@ byte scanLine2()
   // For cd4014
   digitalWrite2(clockIn_Pin, HIGH);
   //set it to 1 to collect parallel data, wait
-  delayMicroseconds(20);
+  //delayMicroseconds(20);
   //set it to 0 to transmit data serially  
   digitalWrite2(latchIn_Pin, LOW);
 
@@ -168,16 +168,18 @@ void checkButtons()
 // Native arduino functions slow (3.4 uS for board scan)
 
 // Use setFirstLine & switchLine
-// Native and fast instead of shiftOut whole byte in setCurrentLine (1.3 uS for board scan)
+// Native and fast instead of shiftOut whole byte in setCurrentLine (1.4 uS for board scan)
 
 // Use setFirstLine & switchLine & scanLine2 & shiftIn2
-// Using DIO2 library which up to 5 times faster (event more performance is possible with using DigitalWrite2f)
+// DIO2 library which up to 5 times faster (event more performance is possible with using DigitalWrite2f)
+// 0.5 uS
 
 
 void checkBoard()
 {
   byte data[8];
 
+  int t = micros();
   setFirstLine();
   for(int i = 0; i < 8; i++)
   {
@@ -185,6 +187,7 @@ void checkBoard()
     data[7-i] = scanLine2();
     switchLine();
   }
+  int result = micros();
 
   boolean needSend = false;
   for(int i = 0; i < 8; i++)
@@ -194,8 +197,10 @@ void checkBoard()
       needSend = true;
     }
    
-  if(needSend)
+  if(needSend){
     sendBoardData();
+    Serial.println(result - t);
+  }
 }
 
 // Events
