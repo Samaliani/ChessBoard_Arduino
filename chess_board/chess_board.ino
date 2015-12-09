@@ -12,16 +12,26 @@ const int latchIn_Pin = 4; // orange-white pin 9 (P/S Clock) on the CD4014
 
 const int button1_Pin = 12; // button for white
 const int button2_Pin = 11; // button for black
+const int beep_Pin = 9; // pin for speaker
 
 const int boardChanged_event = 0xFF;
 const int button1Pressed_event = 0xFE;
 const int button2Pressed_event = 0xFD;
 
+const int requestPosition_event = 0x0F;
+const int successBeep_event = 0x0E;
+const int errorBeep_event = 0x0D;
+const int finalBeep_event = 0x0C;
+const int positionBeep_event = 0x0B;
+
+const int beepFrequency = 563;
+
 boolean button1Pressed;
 boolean button2Pressed;
 byte boardData[8];
+boolean needSend;
 
-void setup(){
+void setup() {
   // Pins
   pinMode(dataOut_Pin, OUTPUT);
   pinMode(latchOut_Pin, OUTPUT);
@@ -31,37 +41,40 @@ void setup(){
   pinMode(clockIn_Pin, OUTPUT);
   pinMode(latchIn_Pin, OUTPUT);
 
-  pinMode(button1_Pin, INPUT_PULLUP);  
-  pinMode(button2_Pin, INPUT_PULLUP);  
-  
+  pinMode(button1_Pin, INPUT_PULLUP);
+  pinMode(button2_Pin, INPUT_PULLUP);
+  pinMode(beep_Pin, OUTPUT);
+
   // Board data
   button1Pressed = false;
   button2Pressed = false;
-  for(int i = 0; i < 8; i++)
+  for (int i = 0; i < 8; i++)
     boardData[i] = 0;
 
+  needSend = false;
   setNoLine();
-  
+
   // Serial
-  Serial.begin(9600); 
+  Serial.begin(9600);
 }
 
-void loop(){
+void loop() {
 
+  checkEvents();
   checkButtons();
   checkBoard();
-  
+
   delay(100);
 }
 
 void setNoLine() {
-  
+
   digitalWrite(latchOut_Pin, LOW);
   shiftOut(dataOut_Pin, clockOut_Pin, LSBFIRST, 0);
   digitalWrite(latchOut_Pin, HIGH);
 }
 
-void setFirstLine(){
+void setFirstLine() {
 
   // Push 1
   digitalWrite2(latchOut_Pin, LOW);
@@ -104,16 +117,16 @@ byte scanLine2()
   digitalWrite2(clockIn_Pin, HIGH);
   //set it to 1 to collect parallel data, wait
   //delayMicroseconds(20);
-  //set it to 0 to transmit data serially  
+  //set it to 0 to transmit data serially
   digitalWrite2(latchIn_Pin, LOW);
 
   //while the shift register is in serial mode
   //collect each shift register into a byte
-  //the register attached to the chip comes in first 
+  //the register attached to the chip comes in first
   return shiftIn2(dataIn_Pin, clockIn_Pin);
 }
 
-void setCurrentLine(int index){
+void setCurrentLine(int index) {
 
   digitalWrite(latchOut_Pin, LOW);
   shiftOut(dataOut_Pin, clockOut_Pin, MSBFIRST, 1 << index);
@@ -129,29 +142,82 @@ byte scanLine()
   digitalWrite(clockIn_Pin, HIGH);
   //set it to 1 to collect parallel data, wait
   delayMicroseconds(20);
-  //set it to 0 to transmit data serially  
+  //set it to 0 to transmit data serially
   digitalWrite(latchIn_Pin, LOW);
 
   //while the shift register is in serial mode
   //collect each shift register into a byte
-  //the register attached to the chip comes in first 
+  //the register attached to the chip comes in first
   return shiftIn(dataIn_Pin, clockIn_Pin, LSBFIRST);
+}
+
+char readHexChar()
+{
+  char c = Serial.read();
+  if (isxdigit(c))
+    return c;
+  else
+    return 0;
+}
+
+void checkEvents() {
+
+  char line[3];
+  line[2] = 0;
+  
+  int i = 0;
+  boolean success = false;
+  while (Serial.available())
+  {
+    char c = readHexChar();
+    if (i < 2)
+      line[i] = c;
+    if ((c == '\n') & ( i == 2))
+    {
+      success = true;
+      break;
+    }
+  }
+
+  if (success)
+  {
+    int value = strtol(&line[0], NULL, 16);
+
+    switch (value)
+    {
+      case requestPosition_event:
+        needSend = true;
+        break;
+      case successBeep_event:
+        processBeep(200);
+        break;
+      case errorBeep_event:
+        doErrorBeep();
+        break;
+      case finalBeep_event:
+        processBeep(1500);
+        break;
+      case positionBeep_event:
+        doPositionBeep();
+        break;
+    }
+  }
 }
 
 void checkButtons()
 {
-  if(digitalRead2(button1_Pin) == LOW)
+  if (digitalRead2(button1_Pin) == LOW)
   {
-    if(!button1Pressed)
+    if (!button1Pressed)
       sendEvent(button1Pressed_event, "");
     button1Pressed = true;
   }
   else
     button1Pressed = false;
 
-  if(digitalRead2(button2_Pin) == LOW)
+  if (digitalRead2(button2_Pin) == LOW)
   {
-    if(!button2Pressed)
+    if (!button2Pressed)
       sendEvent(button2Pressed_event, "");
     button2Pressed = true;
   }
@@ -179,27 +245,24 @@ void checkBoard()
 {
   byte data[8];
 
-  int t = micros();
   setFirstLine();
-  for(int i = 0; i < 8; i++)
+  for (int i = 0; i < 8; i++)
   {
     //setCurrentLine(i);
-    data[7-i] = scanLine2();
+    data[7 - i] = scanLine2();
     switchLine();
   }
-  int result = micros();
 
-  boolean needSend = false;
-  for(int i = 0; i < 8; i++)
+  for (int i = 0; i < 8; i++)
     if (data[i] != boardData[i])
     {
       boardData[i] = data[i];
       needSend = true;
     }
-   
-  if(needSend){
+
+  if (needSend) {
+    needSend = false;
     sendBoardData();
-    Serial.println(result - t);
   }
 }
 
@@ -214,13 +277,41 @@ void sendEvent(int eventId, String data)
 void sendBoardData()
 {
   String data;
-  for(int i = 0; i < 8; i++){
+  for (int i = 0; i < 8; i++) {
     String line = String(boardData[i], HEX);
     if (line.length() == 1)
       line = "0" + line;
-    data += line; 
+    data += line;
   }
-    
-   sendEvent(boardChanged_event, data);  
+
+  sendEvent(boardChanged_event, data);
+}
+
+void doPositionBeep()
+{
+  int duration = 200;
+  // C E G C
+  tone(beep_Pin, 262, duration); // 261.6
+  delay(duration);
+  tone(beep_Pin, 330, duration); // 329.6
+  delay(duration);
+  tone(beep_Pin, 392, duration); // 392
+  delay(duration);
+  tone(beep_Pin, 523, 2 * duration); // 523.2
+}
+
+void processBeep(int duration)
+{
+  tone(beep_Pin, beepFrequency, duration);
+}
+
+void doErrorBeep()
+{
+  int duration = 100;
+  for (int i = 0; i < 3; i++)
+  {
+    tone(beep_Pin, beepFrequency, duration);
+    delay(2 * duration);
+  }
 }
 
