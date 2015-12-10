@@ -164,20 +164,22 @@ void checkEvents() {
 
   char line[3];
   line[2] = 0;
-  
-  int i = 0;
-  boolean success = false;
-  while (Serial.available())
+
+  for(int i = 0; Serial.available(); i++)
   {
-    char c = readHexChar();
-    if (i < 2)
+    char c = Serial.read();
+    if (i < 3)
       line[i] = c;
-    if ((c == '\n') & ( i == 2))
-    {
-      success = true;
+    if (c == '\n')
       break;
-    }
   }
+
+  boolean success = (line[2] == '\n');
+  if (success)
+    for(int i =0; i < 2; i++)
+      if(!isxdigit(line[i]))
+        success = false;
+  
 
   if (success)
   {
