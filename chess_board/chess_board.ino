@@ -64,7 +64,7 @@ void loop() {
   checkButtons();
   checkBoard();
 
-  delay(100);
+  delay(50);
 }
 
 void setNoLine() {
