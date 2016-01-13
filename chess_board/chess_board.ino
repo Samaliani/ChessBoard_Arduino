@@ -23,6 +23,7 @@ const int successBeep_event = 0x0E;
 const int errorBeep_event = 0x0D;
 const int finalBeep_event = 0x0C;
 const int positionBeep_event = 0x0B;
+const int noErrorBeep_event = 0x0A;
 
 const int beepFrequency = 563;
 
@@ -202,6 +203,9 @@ void checkEvents() {
       case positionBeep_event:
         doPositionBeep();
         break;
+      case noErrorBeep_event:
+        doNoErrorBeep();
+        break;
     }
   }
 }
@@ -315,5 +319,15 @@ void doErrorBeep()
     tone(beep_Pin, beepFrequency, duration);
     delay(2 * duration);
   }
+}
+
+void doNoErrorBeep()
+{
+  int duration = 200;
+  // C G
+  tone(beep_Pin, 262, duration); // 261.6
+  delay(duration);
+  tone(beep_Pin, 392, duration); // 392
+  delay(duration);  
 }
 
